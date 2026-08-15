@@ -206,6 +206,9 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Local AI-OS project-planning reference material
+.project-context/
+
 # PyPI configuration file
 .pypirc
 
