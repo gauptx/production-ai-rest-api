@@ -6,12 +6,14 @@ the authenticated persistence boundary by recording a queued job.
 
 from datetime import datetime
 
+from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth import get_current_user
 from app.core.db import get_db
+from app.core.queue import get_queue
 from app.models import SummaryJob, User
 
 router = APIRouter(prefix="/summaries", tags=["summaries"])
@@ -32,19 +34,26 @@ class SummaryJobResponse(BaseModel):
 
 
 @router.post("", response_model=SummaryJobResponse, status_code=status.HTTP_201_CREATED)
-def create_summary(
+async def create_summary(
     request: CreateSummaryRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    queue: ArqRedis = Depends(get_queue),
 ) -> SummaryJob:
-    """Persist a queued job for the authenticated user.
-
-    No queue work is enqueued until the asynchronous processing milestone.
-    """
+    """Persist and enqueue a summary job for asynchronous processing."""
     job = SummaryJob(user_id=current_user.id, input_text=request.text, status="queued")
     db.add(job)
     db.commit()
     db.refresh(job)
+
+    try:
+        await queue.enqueue_job("process_summary", job.id, _job_id=job.id)
+    except Exception as error:
+        job.status = "failed"
+        job.failure_code = "queue_unavailable"
+        db.commit()
+        raise HTTPException(status_code=503, detail="summary queue unavailable") from error
+
     return job
 
 

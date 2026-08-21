@@ -9,7 +9,17 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
 from app.core.db import Base, get_db
+from app.core.queue import get_queue
 from app.main import app
+
+
+class FakeQueue:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    async def enqueue_job(self, function: str, *args: object, **kwargs: object) -> object:
+        self.calls.append((function, args, kwargs))
+        return object()
 
 
 @pytest.fixture
@@ -33,9 +43,17 @@ def client() -> Generator[TestClient, None, None]:
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    fake_queue = FakeQueue()
+
+    async def override_get_queue() -> FakeQueue:
+        return fake_queue
+
+    app.dependency_overrides[get_queue] = override_get_queue
     with TestClient(app) as test_client:
+        test_client.app.state.test_queue = fake_queue
         yield test_client
     app.dependency_overrides.clear()
+    del app.state.test_queue
     Base.metadata.drop_all(engine)
 
 
@@ -95,6 +113,9 @@ def test_authenticated_user_can_create_a_persisted_summary_job(client: TestClien
     assert created.json()["status"] == "queued"
     assert created.json()["id"]
     assert created.json()["created_at"]
+    assert client.app.state.test_queue.calls == [
+        ("process_summary", (created.json()["id"],), {"_job_id": created.json()["id"]})
+    ]
 
     retrieved = client.get(
         f"/api/v1/summaries/{created.json()['id']}",
