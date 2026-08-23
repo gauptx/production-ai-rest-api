@@ -88,6 +88,8 @@ production credentials.
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Local Ollama API address when running outside Compose. |
 | `OLLAMA_MODEL` | `gemma3:4b` | Model used by the summary worker. |
 | `REDIS_URL` | `redis://localhost:6379/0` | ARQ queue connection when running outside Compose. |
+| `SUMMARY_RATE_LIMIT` | `5` | Maximum summary submissions per authenticated user and window. |
+| `SUMMARY_RATE_LIMIT_WINDOW_SECONDS` | `60` | Fixed-window duration for summary rate limiting. |
 
 Docker Compose overrides the Ollama and Redis URLs so containers can reach the
 host model service and the Redis container.
@@ -151,6 +153,27 @@ Successful jobs return `completed` and include `result`. Failed jobs return
 `failed` with a safe `failure_code`; raw provider errors are never returned to
 the client.
 
+## Operational behavior
+
+Every API response includes an `X-Request-ID` header. Supplying one in the
+request preserves it; otherwise the API creates one. API request logs are
+structured JSON events containing the request ID, while summary-worker events
+also contain the job ID. Request bodies, passwords, tokens, and provider error
+details are not logged.
+
+Summary submission is rate-limited per authenticated user. The default allows
+five `POST /api/v1/summaries` requests per 60-second fixed window. Requests
+above the limit receive `429` and a `Retry-After` header. Redis failure during
+rate-limit enforcement or job enqueueing returns `503` with the safe message
+`summary queue unavailable`.
+
+`GET /api/v1/health` reports only whether the API process is running. Use
+`GET /api/v1/readiness` for deployment readiness: it checks PostgreSQL and
+Redis and returns `200 {"status":"ok"}` only when both are reachable.
+Otherwise it returns `503 {"status":"unavailable"}` without exposing
+dependency internals. Unexpected API errors are logged internally and return
+`500 {"detail":"internal server error"}`.
+
 ## Asynchronous job processing
 
 The state flow is:
@@ -172,6 +195,5 @@ are recorded as `provider_error`.
 
 ## Scope boundary
 
-`GET /api/v1/health` verifies that the API process is running. Dependency
-readiness checks are intentionally deferred to a later milestone. All public
-API routes use the `/api/v1` prefix.
+All public API routes use the `/api/v1` prefix. Docker Compose/Ollama
+end-to-end runtime evidence and deployment remain separate delivery work.

@@ -3,7 +3,10 @@
 from arq.connections import RedisSettings
 
 from app.core.config import REDIS_URL
+from app.core.logging import configure_structured_logging
 from app.workers.summary import MAX_PROVIDER_ATTEMPTS, process_summary
+
+configure_structured_logging()
 
 
 class WorkerSettings:

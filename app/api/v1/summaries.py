@@ -4,19 +4,23 @@ Background processing is introduced in Milestone 2. This endpoint establishes
 the authenticated persistence boundary by recording a queued job.
 """
 
+import logging
 from datetime import datetime
 
 from arq.connections import ArqRedis
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth import get_current_user
 from app.core.db import get_db
+from app.core.logging import log_event
 from app.core.queue import get_queue
+from app.core.rate_limit import enforce_summary_rate_limit
 from app.models import SummaryJob, User
 
 router = APIRouter(prefix="/summaries", tags=["summaries"])
+logger = logging.getLogger(__name__)
 
 
 class CreateSummaryRequest(BaseModel):
@@ -35,13 +39,15 @@ class SummaryJobResponse(BaseModel):
 
 @router.post("", response_model=SummaryJobResponse, status_code=status.HTTP_201_CREATED)
 async def create_summary(
-    request: CreateSummaryRequest,
+    payload: CreateSummaryRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     queue: ArqRedis = Depends(get_queue),
 ) -> SummaryJob:
     """Persist and enqueue a summary job for asynchronous processing."""
-    job = SummaryJob(user_id=current_user.id, input_text=request.text, status="queued")
+    await enforce_summary_rate_limit(queue, current_user.id)
+    job = SummaryJob(user_id=current_user.id, input_text=payload.text, status="queued")
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -54,6 +60,13 @@ async def create_summary(
         db.commit()
         raise HTTPException(status_code=503, detail="summary queue unavailable") from error
 
+    log_event(
+        logger,
+        "summary_enqueued",
+        job_id=job.id,
+        request_id=request.state.request_id,
+        user_id=current_user.id,
+    )
     return job
 
 

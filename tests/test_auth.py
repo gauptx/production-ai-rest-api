@@ -16,10 +16,18 @@ from app.main import app
 class FakeQueue:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+        self.rate_limits: dict[str, int] = {}
 
     async def enqueue_job(self, function: str, *args: object, **kwargs: object) -> object:
         self.calls.append((function, args, kwargs))
         return object()
+
+    async def incr(self, key: str) -> int:
+        self.rate_limits[key] = self.rate_limits.get(key, 0) + 1
+        return self.rate_limits[key]
+
+    async def expire(self, key: str, seconds: int) -> bool:
+        return True
 
 
 @pytest.fixture
@@ -153,3 +161,21 @@ def test_summary_job_creation_requires_authentication(client: TestClient) -> Non
     response = client.post("/api/v1/summaries", json={"text": "Unauthenticated text."})
 
     assert response.status_code == 401
+
+
+def test_summary_submission_is_rate_limited_per_user(client: TestClient) -> None:
+    tokens = client.post(
+        "/api/v1/auth/register",
+        json={"email": "limited@example.com", "password": "correct-horse-battery"},
+    ).json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    for _ in range(5):
+        response = client.post("/api/v1/summaries", json={"text": "Text."}, headers=headers)
+        assert response.status_code == 201
+
+    response = client.post("/api/v1/summaries", json={"text": "Text."}, headers=headers)
+
+    assert response.status_code == 429
+    assert response.json() == {"detail": "summary rate limit exceeded"}
+    assert response.headers["Retry-After"] == "60"
