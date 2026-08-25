@@ -77,6 +77,14 @@ Expected response:
 Stop the stack with `docker compose down`. Add `--volumes` only when you also
 want to remove the local PostgreSQL and Redis data.
 
+### Latest local runtime verification
+
+On 2026-08-23, the Docker Compose API, PostgreSQL, Redis, and worker were
+started successfully with local Ollama (`gemma3:4b`). Both `/api/v1/health`
+and `/api/v1/readiness` returned `200`, and an authenticated summary job
+completed through the API, Redis/ARQ, worker, Ollama, and PostgreSQL. API
+request and worker job correlation logs were verified during that run.
+
 ## Configuration
 
 `.env.example` contains safe local defaults for the database, Redis, JWT
@@ -105,6 +113,7 @@ pytest
 ```
 
 GitHub Actions runs the same checks for every push and pull request.
+The latest local run on 2026-08-23 passed all checks and 16 tests.
 
 ## Authentication API
 
@@ -196,4 +205,5 @@ are recorded as `provider_error`.
 ## Scope boundary
 
 All public API routes use the `/api/v1` prefix. Docker Compose/Ollama
-end-to-end runtime evidence and deployment remain separate delivery work.
+end-to-end runtime evidence is verified; deployment remains separate delivery
+work.
