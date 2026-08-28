@@ -207,3 +207,13 @@ are recorded as `provider_error`.
 All public API routes use the `/api/v1` prefix. Docker Compose/Ollama
 end-to-end runtime evidence is verified; deployment remains separate delivery
 work.
+
+## Delivery documentation
+
+Milestone 4 delivery materials are available locally:
+
+- [Deployment architecture](docs/architecture.md) — the target single-VM
+  architecture; it is not a claim of a live deployment.
+- [AWS Lightsail deployment runbook](docs/deployment-runbook.md) — the planned
+  production release and verification procedure.
+- [Demo script](docs/demo-script.md) — a concise 2–3 minute technical walkthrough.
