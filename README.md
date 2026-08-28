@@ -217,3 +217,4 @@ Milestone 4 delivery materials are available locally:
 - [AWS Lightsail deployment runbook](docs/deployment-runbook.md) — the planned
   production release and verification procedure.
 - [Demo script](docs/demo-script.md) — a concise 2–3 minute technical walkthrough.
+end-to-end runtime evidence and deployment remain separate delivery work.
